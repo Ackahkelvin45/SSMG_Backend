@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.contrib.contenttypes.models import ContentType
+from django.contrib.contenttypes.fields import GenericForeignKey
 from authentication.models import Service
 
 # Base abstract model for common campaign fields
@@ -421,3 +423,64 @@ class SundayManagementSubmission(BaseSubmission):
 
 class SundayManagementSubmissionFile(SubmissionFile):
     submission = models.ForeignKey(SundayManagementSubmission, on_delete=models.CASCADE, related_name='pictures')
+
+
+# Campaign 21: Equipment Campaign
+class EquipmentCampaign(BaseCampaign):
+    class Meta:
+        db_table = 'campaign_equip'
+
+class EquipmentSubmission(BaseSubmission):
+    campaign = models.ForeignKey(EquipmentCampaign, on_delete=models.CASCADE, related_name='submissions')
+    date = models.DateField(null=True, blank=True)
+    equipment_name = models.CharField(max_length=200, null=True, blank=True)
+    equipment_type = models.CharField(max_length=200, null=True, blank=True)
+    quantity = models.IntegerField(null=True, blank=True)
+    condition = models.CharField(max_length=100, null=True, blank=True, help_text="e.g., New, Good, Fair, Poor")
+    location = models.CharField(max_length=200, null=True, blank=True, help_text="Where the equipment is located")
+    purchase_date = models.DateField(null=True, blank=True)
+    purchase_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    current_value = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    supplier_name = models.CharField(max_length=200, null=True, blank=True)
+    warranty_expiry_date = models.DateField(null=True, blank=True)
+    maintenance_notes = models.TextField(null=True, blank=True)
+    is_functional = models.BooleanField(default=True, null=True, blank=True)
+
+    class Meta:
+        db_table = 'submission_equip'
+
+class EquipmentSubmissionFile(SubmissionFile):
+    submission = models.ForeignKey(EquipmentSubmission, on_delete=models.CASCADE, related_name='pictures')
+
+
+# Campaign Manager Assignment Model
+class CampaignManagerAssignment(models.Model):
+    """
+    Links a Campaign Manager user to one or more campaigns.
+    Campaign Managers can be assigned to multiple campaigns and can fill data for those campaigns across ALL services.
+    Campaign Managers are NOT tied to a specific service.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='campaign_assignments',
+        limit_choices_to={'role': 'CAMPAIGN_MANAGER'}
+    )
+    
+    # Generic foreign key to link to any campaign type
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    campaign = GenericForeignKey('content_type', 'object_id')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'campaign_manager_assignments'
+        unique_together = ['user', 'content_type', 'object_id']
+        verbose_name = 'Campaign Manager Assignment'
+        verbose_name_plural = 'Campaign Manager Assignments'
+    
+    def __str__(self):
+        campaign_name = str(self.campaign) if self.campaign else 'Unknown Campaign'
+        return f"{self.user.full_name} -> {campaign_name}"

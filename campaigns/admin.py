@@ -20,6 +20,8 @@ from .models import (
     TangerineCampaign, TangerineSubmission,
     SwollenSundayCampaign, SwollenSundaySubmission, SwollenSundaySubmissionFile,
     SundayManagementCampaign, SundayManagementSubmission, SundayManagementSubmissionFile,
+    EquipmentCampaign, EquipmentSubmission, EquipmentSubmissionFile,
+    CampaignManagerAssignment,
 )
 
 
@@ -85,6 +87,11 @@ class SwollenSundaySubmissionFileInline(admin.TabularInline):
 
 class SundayManagementSubmissionFileInline(admin.TabularInline):
     model = SundayManagementSubmissionFile
+    extra = 0
+
+
+class EquipmentSubmissionFileInline(admin.TabularInline):
+    model = EquipmentSubmissionFile
     extra = 0
 
 
@@ -188,6 +195,11 @@ class SundayManagementSubmissionAdmin(admin.ModelAdmin):
     inlines = [SundayManagementSubmissionFileInline]
 
 
+@admin.register(EquipmentSubmission)
+class EquipmentSubmissionAdmin(admin.ModelAdmin):
+    inlines = [EquipmentSubmissionFileInline]
+
+
 # Campaign models
 admin.site.register(StateOfTheFlockCampaign)
 admin.site.register(SoulWinningCampaign)
@@ -209,3 +221,38 @@ admin.site.register(OrganisedCreativeArtsCampaign)
 admin.site.register(TangerineCampaign)
 admin.site.register(SwollenSundayCampaign)
 admin.site.register(SundayManagementCampaign)
+admin.site.register(EquipmentCampaign)
+
+
+@admin.register(CampaignManagerAssignment)
+class CampaignManagerAssignmentAdmin(admin.ModelAdmin):
+    list_display = ['user', 'get_campaign_name', 'get_campaign_type', 'created_at']
+    list_filter = ['created_at', 'content_type']
+    search_fields = ['user__username', 'user__email', 'user__first_name', 'user__last_name']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Assignment', {
+            'fields': ('user', 'content_type', 'object_id')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+    
+    def get_campaign_name(self, obj):
+        """Display the campaign name"""
+        return str(obj.campaign) if obj.campaign else 'N/A'
+    get_campaign_name.short_description = 'Campaign'
+    
+    def get_campaign_type(self, obj):
+        """Display the campaign type"""
+        return obj.content_type.model_class().__name__ if obj.content_type else 'N/A'
+    get_campaign_type.short_description = 'Campaign Type'
+    
+    def get_form(self, request, obj=None, **kwargs):
+        """Limit user choices to Campaign Managers only"""
+        form = super().get_form(request, obj, **kwargs)
+        if 'user' in form.base_fields:
+            form.base_fields['user'].queryset = form.base_fields['user'].queryset.filter(role='CAMPAIGN_MANAGER')
+        return form

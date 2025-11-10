@@ -27,6 +27,7 @@ from .models import (
     TangerineCampaign, TangerineSubmission,
     SwollenSundayCampaign, SwollenSundaySubmission,
     SundayManagementCampaign, SundayManagementSubmission,
+    EquipmentCampaign, EquipmentSubmission,
 )
 from .serializers import (
     StateOfTheFlockCampaignSerializer, StateOfTheFlockSubmissionSerializer,
@@ -49,19 +50,26 @@ from .serializers import (
     TangerineCampaignSerializer, TangerineSubmissionSerializer,
     SwollenSundayCampaignSerializer, SwollenSundaySubmissionSerializer,
     SundayManagementCampaignSerializer, SundayManagementSubmissionSerializer,
+    EquipmentCampaignSerializer, EquipmentSubmissionSerializer,
 )
 
 
 class AllCampaignsListView(APIView):
     """
-    View to retrieve all campaigns across all campaign types
+    View to retrieve all campaigns across all campaign types.
+    
+    For Campaign Managers: Only returns campaigns assigned to them.
+    For other roles: Returns all campaigns.
     """
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request):
         """
-        List all campaigns from all campaign types
+        List campaigns based on user role:
+        - Campaign Managers: Only assigned campaigns
+        - Other roles: All campaigns
         """
+        user = request.user
         campaigns = []
         
         # Define all campaign models and their serializers
@@ -86,13 +94,46 @@ class AllCampaignsListView(APIView):
             (TangerineCampaign, TangerineCampaignSerializer),
             (SwollenSundayCampaign, SwollenSundayCampaignSerializer),
             (SundayManagementCampaign, SundayManagementCampaignSerializer),
+            (EquipmentCampaign, EquipmentCampaignSerializer),
         ]
         
         # Get active campaigns filter from query params
         status_filter = request.query_params.get('status', None)
         
+        # If user is a Campaign Manager, get their assigned campaigns
+        assigned_campaign_ids = {}
+        if user.is_campaign_manager:
+            from campaigns.models import CampaignManagerAssignment
+            from django.contrib.contenttypes.models import ContentType
+            
+            assignments = CampaignManagerAssignment.objects.filter(
+                user=user
+            ).select_related('content_type')
+            
+            # Build a map of content_type_id -> list of campaign IDs
+            for assignment in assignments:
+                ct_id = assignment.content_type.id
+                if ct_id not in assigned_campaign_ids:
+                    assigned_campaign_ids[ct_id] = []
+                assigned_campaign_ids[ct_id].append(assignment.object_id)
+        
         for model, serializer_class in campaign_types:
-            queryset = model.objects.all()
+            # Get content type for this campaign model
+            from django.contrib.contenttypes.models import ContentType
+            ct = ContentType.objects.get_for_model(model)
+            
+            # If Campaign Manager, filter to only assigned campaigns
+            if user.is_campaign_manager:
+                if ct.id in assigned_campaign_ids:
+                    # Only get campaigns that are assigned to this manager
+                    campaign_ids = assigned_campaign_ids[ct.id]
+                    queryset = model.objects.filter(id__in=campaign_ids)
+                else:
+                    # This campaign type has no assignments, skip it
+                    continue
+            else:
+                # For other roles, get all campaigns
+                queryset = model.objects.all()
             
             # Apply status filter if provided
             if status_filter:
@@ -112,13 +153,62 @@ class AllCampaignsListView(APIView):
 
 # ============= Submission ViewSets =============
 
+def filter_queryset_for_campaign_manager(queryset, user, campaign_model):
+    """
+    Helper function to filter queryset for Campaign Managers.
+    Only returns submissions for campaigns assigned to the manager.
+    """
+    if user.is_campaign_manager:
+        from campaigns.models import CampaignManagerAssignment
+        from django.contrib.contenttypes.models import ContentType
+        
+        # Get content type for this campaign model
+        ct = ContentType.objects.get_for_model(campaign_model)
+        
+        # Get assigned campaign IDs for this content type
+        assignments = CampaignManagerAssignment.objects.filter(
+            user=user,
+            content_type=ct
+        )
+        
+        assigned_campaign_ids = [assignment.object_id for assignment in assignments]
+        
+        # Filter to only assigned campaigns
+        if assigned_campaign_ids:
+            queryset = queryset.filter(campaign_id__in=assigned_campaign_ids)
+        else:
+            # No assigned campaigns of this type, return empty queryset
+            queryset = queryset.none()
+    
+    return queryset
+
+
+def validate_campaign_manager_assignment(user, campaign_model, campaign_id):
+    """
+    Helper function to validate that a Campaign Manager is assigned to a campaign.
+    Raises ValidationError if not assigned.
+    """
+    if user.is_campaign_manager:
+        from campaigns.models import CampaignManagerAssignment
+        from django.contrib.contenttypes.models import ContentType
+        ct = ContentType.objects.get_for_model(campaign_model)
+        if not CampaignManagerAssignment.objects.filter(user=user, content_type=ct, object_id=campaign_id).exists():
+            raise serializers.ValidationError({"campaign": "You are not assigned to this campaign."})
+
+
 class StateOfTheFlockSubmissionViewSet(viewsets.ModelViewSet):
     queryset = StateOfTheFlockSubmission.objects.all()
     serializer_class = StateOfTheFlockSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
+    
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, StateOfTheFlockCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -140,6 +230,7 @@ class StateOfTheFlockSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -147,6 +238,10 @@ class StateOfTheFlockSubmissionViewSet(viewsets.ModelViewSet):
             campaign = StateOfTheFlockCampaign.objects.get(id=campaign_id)
         except StateOfTheFlockCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, StateOfTheFlockCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -160,6 +255,11 @@ class SoulWinningSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, SoulWinningCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -181,6 +281,7 @@ class SoulWinningSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -188,6 +289,10 @@ class SoulWinningSubmissionViewSet(viewsets.ModelViewSet):
             campaign = SoulWinningCampaign.objects.get(id=campaign_id)
         except SoulWinningCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, SoulWinningCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -201,6 +306,11 @@ class ServantsArmedTrainedSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, ServantsArmedTrainedCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -222,6 +332,7 @@ class ServantsArmedTrainedSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -229,6 +340,10 @@ class ServantsArmedTrainedSubmissionViewSet(viewsets.ModelViewSet):
             campaign = ServantsArmedTrainedCampaign.objects.get(id=campaign_id)
         except ServantsArmedTrainedCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, ServantsArmedTrainedCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -242,6 +357,11 @@ class AntibrutishSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, AntibrutishCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -263,6 +383,7 @@ class AntibrutishSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -270,6 +391,10 @@ class AntibrutishSubmissionViewSet(viewsets.ModelViewSet):
             campaign = AntibrutishCampaign.objects.get(id=campaign_id)
         except AntibrutishCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, AntibrutishCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -279,8 +404,14 @@ class HearingSeeingSubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = HearingSeeingSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
+    
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, HearingSeeingCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -302,6 +433,7 @@ class HearingSeeingSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -309,6 +441,10 @@ class HearingSeeingSubmissionViewSet(viewsets.ModelViewSet):
             campaign = HearingSeeingCampaign.objects.get(id=campaign_id)
         except HearingSeeingCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, HearingSeeingCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -322,6 +458,11 @@ class HonourYourProphetSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, HonourYourProphetCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -343,6 +484,7 @@ class HonourYourProphetSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -350,6 +492,10 @@ class HonourYourProphetSubmissionViewSet(viewsets.ModelViewSet):
             campaign = HonourYourProphetCampaign.objects.get(id=campaign_id)
         except HonourYourProphetCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, HonourYourProphetCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -363,6 +509,11 @@ class BasontaProliferationSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, BasontaProliferationCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -384,6 +535,7 @@ class BasontaProliferationSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -391,6 +543,10 @@ class BasontaProliferationSubmissionViewSet(viewsets.ModelViewSet):
             campaign = BasontaProliferationCampaign.objects.get(id=campaign_id)
         except BasontaProliferationCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, BasontaProliferationCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -400,8 +556,14 @@ class IntimateCounselingSubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = IntimateCounselingSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
+    
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, IntimateCounselingCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -423,6 +585,7 @@ class IntimateCounselingSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -430,6 +593,10 @@ class IntimateCounselingSubmissionViewSet(viewsets.ModelViewSet):
             campaign = IntimateCounselingCampaign.objects.get(id=campaign_id)
         except IntimateCounselingCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, IntimateCounselingCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -443,6 +610,11 @@ class TechnologySubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, TechnologyCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -464,6 +636,7 @@ class TechnologySubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -471,6 +644,10 @@ class TechnologySubmissionViewSet(viewsets.ModelViewSet):
             campaign = TechnologyCampaign.objects.get(id=campaign_id)
         except TechnologyCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, TechnologyCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -480,8 +657,14 @@ class SheperdingControlSubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = SheperdingControlSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
+    
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, SheperdingControlCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -503,6 +686,7 @@ class SheperdingControlSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -510,6 +694,10 @@ class SheperdingControlSubmissionViewSet(viewsets.ModelViewSet):
             campaign = SheperdingControlCampaign.objects.get(id=campaign_id)
         except SheperdingControlCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, SheperdingControlCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -523,6 +711,11 @@ class MultiplicationSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, MultiplicationCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -544,6 +737,7 @@ class MultiplicationSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -551,6 +745,10 @@ class MultiplicationSubmissionViewSet(viewsets.ModelViewSet):
             campaign = MultiplicationCampaign.objects.get(id=campaign_id)
         except MultiplicationCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, MultiplicationCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -564,6 +762,11 @@ class UnderstandingSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, UnderstandingCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -585,6 +788,7 @@ class UnderstandingSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -592,6 +796,10 @@ class UnderstandingSubmissionViewSet(viewsets.ModelViewSet):
             campaign = UnderstandingCampaign.objects.get(id=campaign_id)
         except UnderstandingCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, UnderstandingCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -605,6 +813,11 @@ class SheepSeekingSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, SheepSeekingCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -626,6 +839,7 @@ class SheepSeekingSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -633,6 +847,10 @@ class SheepSeekingSubmissionViewSet(viewsets.ModelViewSet):
             campaign = SheepSeekingCampaign.objects.get(id=campaign_id)
         except SheepSeekingCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, SheepSeekingCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -642,8 +860,14 @@ class TestimonySubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = TestimonySubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
+    
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, TestimonyCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -665,6 +889,7 @@ class TestimonySubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -672,6 +897,10 @@ class TestimonySubmissionViewSet(viewsets.ModelViewSet):
             campaign = TestimonyCampaign.objects.get(id=campaign_id)
         except TestimonyCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, TestimonyCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -685,6 +914,11 @@ class TelepastoringSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, TelepastoringCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -706,6 +940,7 @@ class TelepastoringSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -713,6 +948,10 @@ class TelepastoringSubmissionViewSet(viewsets.ModelViewSet):
             campaign = TelepastoringCampaign.objects.get(id=campaign_id)
         except TelepastoringCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, TelepastoringCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -726,6 +965,11 @@ class GatheringBusSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, GatheringBusCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -747,6 +991,7 @@ class GatheringBusSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -754,6 +999,10 @@ class GatheringBusSubmissionViewSet(viewsets.ModelViewSet):
             campaign = GatheringBusCampaign.objects.get(id=campaign_id)
         except GatheringBusCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, GatheringBusCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -763,8 +1012,14 @@ class OrganisedCreativeArtsSubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = OrganisedCreativeArtsSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
+    
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, OrganisedCreativeArtsCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -786,6 +1041,7 @@ class OrganisedCreativeArtsSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -793,6 +1049,10 @@ class OrganisedCreativeArtsSubmissionViewSet(viewsets.ModelViewSet):
             campaign = OrganisedCreativeArtsCampaign.objects.get(id=campaign_id)
         except OrganisedCreativeArtsCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, OrganisedCreativeArtsCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -802,8 +1062,14 @@ class TangerineSubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = TangerineSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = DefaultPagination
+    
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, TangerineCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -825,6 +1091,7 @@ class TangerineSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -832,6 +1099,10 @@ class TangerineSubmissionViewSet(viewsets.ModelViewSet):
             campaign = TangerineCampaign.objects.get(id=campaign_id)
         except TangerineCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, TangerineCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -845,6 +1116,11 @@ class SwollenSundaySubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, SwollenSundayCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -866,6 +1142,7 @@ class SwollenSundaySubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -873,6 +1150,10 @@ class SwollenSundaySubmissionViewSet(viewsets.ModelViewSet):
             campaign = SwollenSundayCampaign.objects.get(id=campaign_id)
         except SwollenSundayCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, SwollenSundayCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
@@ -886,6 +1167,11 @@ class SundayManagementSubmissionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, SundayManagementCampaign)
+        
         campaign_id = self.request.query_params.get('campaign', None)
         if campaign_id:
             queryset = queryset.filter(campaign_id=campaign_id)
@@ -907,6 +1193,7 @@ class SundayManagementSubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        user = self.request.user
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
         if not campaign_id:
             raise serializers.ValidationError({"campaign": "This field is required."})
@@ -914,5 +1201,60 @@ class SundayManagementSubmissionViewSet(viewsets.ModelViewSet):
             campaign = SundayManagementCampaign.objects.get(id=campaign_id)
         except SundayManagementCampaign.DoesNotExist:
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, SundayManagementCampaign, campaign_id)
+        
+        service = getattr(self.request.user, 'service', None)
+        serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
+
+
+class EquipmentSubmissionViewSet(viewsets.ModelViewSet):
+    queryset = EquipmentSubmission.objects.all()
+    serializer_class = EquipmentSubmissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DefaultPagination
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        
+        # Filter for Campaign Managers - only show assigned campaigns
+        queryset = filter_queryset_for_campaign_manager(queryset, user, EquipmentCampaign)
+        
+        campaign_id = self.request.query_params.get('campaign', None)
+        if campaign_id:
+            queryset = queryset.filter(campaign_id=campaign_id)
+        
+        # Date range filtering
+        start_date = self.request.query_params.get('start_date', None)
+        end_date = self.request.query_params.get('end_date', None)
+        
+        if start_date:
+            start_date_parsed = parse_date(start_date)
+            if start_date_parsed:
+                queryset = queryset.filter(submission_period__gte=start_date_parsed)
+        
+        if end_date:
+            end_date_parsed = parse_date(end_date)
+            if end_date_parsed:
+                queryset = queryset.filter(submission_period__lte=end_date_parsed)
+        
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
+        if not campaign_id:
+            raise serializers.ValidationError({"campaign": "This field is required."})
+        try:
+            campaign = EquipmentCampaign.objects.get(id=campaign_id)
+        except EquipmentCampaign.DoesNotExist:
+            raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        
+        # Check if Campaign Manager is assigned to this campaign
+        validate_campaign_manager_assignment(user, EquipmentCampaign, campaign_id)
+        
         service = getattr(self.request.user, 'service', None)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)

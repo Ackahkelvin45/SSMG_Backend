@@ -20,6 +20,7 @@ from .models import (
     TangerineCampaign, TangerineSubmission,
     SwollenSundayCampaign, SwollenSundaySubmission, SwollenSundaySubmissionFile,
     SundayManagementCampaign, SundayManagementSubmission, SundayManagementSubmissionFile,
+    EquipmentCampaign, EquipmentSubmission, EquipmentSubmissionFile,
 )
 
 
@@ -254,6 +255,17 @@ class SundayManagementCampaignSerializer(BaseCampaignSerializer):
         return "Sunday Management"
 
 
+class EquipmentCampaignSerializer(BaseCampaignSerializer):
+    campaign_type = serializers.SerializerMethodField()
+    
+    class Meta(BaseCampaignSerializer.Meta):
+        model = EquipmentCampaign
+        fields = BaseCampaignSerializer.Meta.fields + ['campaign_type']
+    
+    def get_campaign_type(self, obj):
+        return "Equipment"
+
+
 # ============= Submission File Serializers =============
 
 class SubmissionFileSerializer(serializers.ModelSerializer):
@@ -326,6 +338,11 @@ class SwollenSundaySubmissionFileSerializer(SubmissionFileSerializer):
 class SundayManagementSubmissionFileSerializer(SubmissionFileSerializer):
     class Meta(SubmissionFileSerializer.Meta):
         model = SundayManagementSubmissionFile
+
+
+class EquipmentSubmissionFileSerializer(SubmissionFileSerializer):
+    class Meta(SubmissionFileSerializer.Meta):
+        model = EquipmentSubmissionFile
 
 
 # ============= Submission Serializers =============
@@ -882,6 +899,40 @@ class SundayManagementSubmissionSerializer(serializers.ModelSerializer):
         
         for picture in picture_files:
             SundayManagementSubmissionFile.objects.create(submission=submission, file=picture)
+        
+        return submission
+
+
+class EquipmentSubmissionSerializer(serializers.ModelSerializer):
+    submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
+    service_name = serializers.CharField(source='service.name', read_only=True)
+    pictures = EquipmentSubmissionFileSerializer(many=True, read_only=True)
+    picture_files = serializers.ListField(
+        child=serializers.ImageField(),
+        write_only=True,
+        required=False
+    )
+    
+    class Meta:
+        model = EquipmentSubmission
+        fields = [
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'submission_period', 'date', 'equipment_name', 'equipment_type', 'quantity',
+            'condition', 'location', 'purchase_date', 'purchase_cost', 'current_value',
+            'supplier_name', 'warranty_expiry_date', 'maintenance_notes', 'is_functional',
+            'pictures', 'picture_files', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'pictures', 'created_at', 'updated_at'
+        ]
+    
+    def create(self, validated_data):
+        picture_files = validated_data.pop('picture_files', [])
+        submission = EquipmentSubmission.objects.create(**validated_data)
+        
+        for picture in picture_files:
+            EquipmentSubmissionFile.objects.create(submission=submission, file=picture)
         
         return submission
 

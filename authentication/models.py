@@ -36,7 +36,7 @@ class UserManager(BaseUserManager):
 
         role = extra_fields.get("role", "PASTOR") 
 
-        if role != "ADMIN" and not password:
+        if role not in ["ADMIN"] and not password:
             password = self.generate_random_password()
 
         user = self.model(
@@ -68,13 +68,14 @@ class CustomerUser(AbstractUser):
         ADMIN = "ADMIN", "Admin"
         Pastor = "PASTOR", "Pastor"
         Helper = "HELPER", "Helper"
+        CAMPAIGN_MANAGER = "CAMPAIGN_MANAGER", "Campaign Manager"
     first_name=models.CharField(max_length=150,null=True,blank=True)
     last_name=models.CharField(max_length=150,null=True,blank=True)
     email=models.EmailField(unique=True,null=True,blank=True)
     username=models.CharField(max_length=150,null=True,blank=True,unique=True)
 
     service=models.ForeignKey(Service,on_delete=models.SET_NULL,null=True,blank=True)
-    role = models.CharField(max_length=10,choices=Role.choices,default=Role.Pastor)
+    role = models.CharField(max_length=20,choices=Role.choices,default=Role.Pastor)
     phone_number=models.CharField(max_length=100,unique=True,blank=True,null=True)
     profile_picture=models.ImageField(upload_to="profile_pictures",null=True,blank=True)
     password_changed=models.BooleanField(default=False)
@@ -91,6 +92,17 @@ class CustomerUser(AbstractUser):
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
     
+    @property
+    def is_campaign_manager(self):
+        """Check if user is a campaign manager"""
+        return self.role == self.Role.CAMPAIGN_MANAGER
+    
+    def get_assigned_campaigns(self):
+        """Get all campaigns assigned to this campaign manager"""
+        if self.is_campaign_manager:
+            if hasattr(self, 'campaign_assignments'):
+                return [assignment.campaign for assignment in self.campaign_assignments.all()]
+        return []
 
     def __str__(self):
         return self.full_name

@@ -22,6 +22,7 @@ from .views import (
     TangerineSubmissionViewSet,
     SwollenSundaySubmissionViewSet,
     SundayManagementSubmissionViewSet,
+    EquipmentSubmissionViewSet,
 )
 
 router = DefaultRouter()
@@ -47,6 +48,7 @@ router.register(r'organised-creative-arts/submissions', OrganisedCreativeArtsSub
 router.register(r'tangerine/submissions', TangerineSubmissionViewSet, basename='tangerine-submission')
 router.register(r'swollen-sunday/submissions', SwollenSundaySubmissionViewSet, basename='swollen-sunday-submission')
 router.register(r'sunday-management/submissions', SundayManagementSubmissionViewSet, basename='sunday-management-submission')
+router.register(r'equipment/submissions', EquipmentSubmissionViewSet, basename='equipment-submission')
 
 urlpatterns = [
     path('all/', AllCampaignsListView.as_view(), name='all-campaigns-list'),

@@ -13,7 +13,8 @@ from .serializers import (
     UserUpdateSerializer,
     ServiceSerializer,
     ServiceCreateSerializer,
-    ChangePasswordSerializer
+    ChangePasswordSerializer,
+    CampaignManagerCreateSerializer
 )
 from helpers.pagination import DefaultPagination
 from rest_framework.decorators import action
@@ -27,6 +28,7 @@ from campaigns.models import (
     SheepSeekingSubmission, TestimonySubmission, TelepastoringSubmission,
     GatheringBusSubmission, OrganisedCreativeArtsSubmission, TangerineSubmission,
     SwollenSundaySubmission, SundayManagementSubmission,
+    EquipmentSubmission,
 )
 
 # Import dashboard serializers
@@ -112,11 +114,184 @@ class UserViewSet(viewsets.ModelViewSet):
             "message": "Password changed successfully",
             "password_changed": True
         }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['post'], url_path='create-campaign-manager')
+    def create_campaign_manager(self, request):
+        """
+        Create a campaign manager user and assign campaigns.
+        
+        Campaign Managers are NOT assigned to a specific service.
+        They can fill data for their assigned campaigns across ALL services.
+        
+        Password is auto-generated (default: "kelvin") - not exposed in the API.
+        
+        Required fields:
+        - first_name, last_name, username, email, phone_number
+        - campaign_assignments: list of campaign names (system auto-detects campaign type)
+        
+        Optional fields:
+        - profile_picture
+        
+        Example request body:
+        {
+            "first_name": "John",
+            "last_name": "Doe",
+            "username": "johndoe",
+            "email": "john@example.com",
+            "phone_number": "+1234567890",
+            "campaign_assignments": [
+                {"campaign_name": "State of the Flock 2025"},
+                {"campaign_name": "Soul Winning Initiative"},
+                {"campaign_name": "Technology Upgrade"}
+            ]
+        }
+        """
+        serializer = CampaignManagerCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(
+            CampaignManagerCreateSerializer(user).data,
+            status=status.HTTP_201_CREATED
+        )
 
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
-   
+        """
+        Dashboard endpoint that provides different data based on user role.
+        
+        For Campaign Managers:
+        - User details
+        - Total assigned campaigns
+        - List of assigned campaigns with details
+        - Recent submissions (limited to assigned campaigns)
+        - Recent campaigns they're assigned to
+        
+        For other roles (Pastor, Helper, Admin):
+        - Standard dashboard (all campaigns and submissions)
+        """
         user = request.user
+        
+        # Check if user is a Campaign Manager
+        if user.is_campaign_manager:
+            return self._campaign_manager_dashboard(request, user)
+        
+        # Standard dashboard for other roles
+        return self._standard_dashboard(request, user)
+    
+    def _campaign_manager_dashboard(self, request, user):
+        """Dashboard specifically for Campaign Managers"""
+        from campaigns.models import CampaignManagerAssignment
+        from django.contrib.contenttypes.models import ContentType
+        
+        # Get all assigned campaigns
+        assignments = CampaignManagerAssignment.objects.filter(
+            user=user
+        ).select_related('content_type')
+        
+        # Build assigned campaigns data
+        assigned_campaigns = []
+        assigned_campaign_ids = {}  # Map of content_type_id -> list of campaign IDs
+        
+        for assignment in assignments:
+            campaign = assignment.campaign
+            if campaign:
+                campaign_type = assignment.content_type.model_class().__name__
+                
+                # Track for filtering submissions
+                ct_id = assignment.content_type.id
+                if ct_id not in assigned_campaign_ids:
+                    assigned_campaign_ids[ct_id] = []
+                assigned_campaign_ids[ct_id].append(assignment.object_id)
+                
+                assigned_campaigns.append({
+                    'id': campaign.id,
+                    'name': campaign.name,
+                    'description': campaign.description,
+                    'campaign_type': campaign_type,
+                    'status': campaign.status,
+                    'created_at': campaign.created_at,
+                    'icon': request.build_absolute_uri(campaign.icon.url) if campaign.icon else None,
+                })
+        
+        # Get submission models mapping
+        submission_models = [
+            (StateOfTheFlockSubmission, "State of the Flock"),
+            (SoulWinningSubmission, "Soul Winning"),
+            (ServantsArmedTrainedSubmission, "Servants Armed and Trained"),
+            (AntibrutishSubmission, "Antibrutish"),
+            (HearingSeeingSubmission, "Hearing and Seeing"),
+            (HonourYourProphetSubmission, "Honour Your Prophet"),
+            (BasontaProliferationSubmission, "Basonta Proliferation"),
+            (IntimateCounselingSubmission, "Intimate Counseling"),
+            (TechnologySubmission, "Technology"),
+            (SheperdingControlSubmission, "Sheperding Control"),
+            (MultiplicationSubmission, "Multiplication"),
+            (UnderstandingSubmission, "Understanding"),
+            (SheepSeekingSubmission, "Sheep Seeking"),
+            (TestimonySubmission, "Testimony"),
+            (TelepastoringSubmission, "Telepastoring"),
+            (GatheringBusSubmission, "Gathering Bus"),
+            (OrganisedCreativeArtsSubmission, "Organised Creative Arts"),
+            (TangerineSubmission, "Tangerine"),
+            (SwollenSundaySubmission, "Swollen Sunday"),
+            (SundayManagementSubmission, "Sunday Management"),
+            (EquipmentSubmission, "Equipment"),
+        ]
+        
+        # Get recent submissions (only for assigned campaigns)
+        recent_submissions = []
+        
+        for SubmissionModel, campaign_type_name in submission_models:
+            try:
+                # Get content type for this submission model
+                ct = ContentType.objects.get_for_model(SubmissionModel)
+                
+                # Check if this content type has any assigned campaigns
+                if ct.id in assigned_campaign_ids:
+                    # Filter submissions to only assigned campaigns
+                    submissions = SubmissionModel.objects.filter(
+                        campaign_id__in=assigned_campaign_ids[ct.id],
+                        submitted_by=user
+                    ).select_related('campaign', 'service').order_by('-created_at')[:10]
+                    
+                    for sub in submissions:
+                        recent_submissions.append({
+                            'id': sub.id,
+                            'campaign_name': sub.campaign.name,
+                            'campaign_type': campaign_type_name,
+                            'service_name': sub.service.name if sub.service else 'N/A',
+                            'submission_period': sub.submission_period,
+                            'created_at': sub.created_at,
+                        })
+            except Exception:
+                continue
+        
+        # Sort all submissions by created_at and take top 10
+        recent_submissions = sorted(
+            recent_submissions,
+            key=lambda x: x['created_at'],
+            reverse=True
+        )[:10]
+        
+        # Return Campaign Manager dashboard data
+        return Response({
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'full_name': user.full_name,
+                'role': user.role,
+                'phone_number': user.phone_number,
+                'profile_picture': request.build_absolute_uri(user.profile_picture.url) if user.profile_picture else None,
+            },
+            'total_assigned_campaigns': len(assigned_campaigns),
+            'assigned_campaigns': assigned_campaigns,
+            'recent_submissions': recent_submissions,
+            'recent_campaigns': assigned_campaigns[:5],  # Show 5 most recent
+        })
+    
+    def _standard_dashboard(self, request, user):
+        """Standard dashboard for Pastor, Helper, and Admin roles"""
         
         submission_models = [
             (StateOfTheFlockSubmission, "State of the Flock"),
@@ -139,6 +314,7 @@ class UserViewSet(viewsets.ModelViewSet):
             (TangerineSubmission, "Tangerine"),
             (SwollenSundaySubmission, "Swollen Sunday"),
             (SundayManagementSubmission, "Sunday Management"),
+            (EquipmentSubmission, "Equipment"),
         ]
         
         # ===== GET RECENT SUBMISSIONS (5 most recent across all types) =====
@@ -276,12 +452,258 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         Get comprehensive analytics and growth metrics for the user's church/service.
         
+        For Campaign Managers: Shows simplified analytics with only their submissions,
+        totals over time, and basic data for assigned campaigns.
+        
+        For Other Roles: Shows comprehensive analytics.
+        
         Query Parameters:
         - period: 'month', 'quarter', 'year', 'all' (default: 'month')
         - start_date: YYYY-MM-DD (optional, for custom range)
         - end_date: YYYY-MM-DD (optional, for custom range)
         """
         user = request.user
+        
+        # Check if user is a Campaign Manager
+        if user.is_campaign_manager:
+            return self._campaign_manager_analytics(request, user)
+        
+        # Standard analytics for other roles
+        return self._standard_analytics(request, user)
+    
+    def _campaign_manager_analytics(self, request, user):
+        """Simplified analytics for Campaign Managers - only their submissions"""
+        from campaigns.models import CampaignManagerAssignment
+        from django.contrib.contenttypes.models import ContentType
+        
+        # Get assigned campaign IDs
+        assignments = CampaignManagerAssignment.objects.filter(user=user).select_related('content_type')
+        assigned_campaign_ids = {}  # Map of content_type_id -> list of campaign IDs
+        
+        for assignment in assignments:
+            ct_id = assignment.content_type.id
+            if ct_id not in assigned_campaign_ids:
+                assigned_campaign_ids[ct_id] = []
+            assigned_campaign_ids[ct_id].append(assignment.object_id)
+        
+        # Determine date range
+        period = request.query_params.get('period', 'month').lower()
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        
+        now = timezone.now()
+        
+        if start_date_str and end_date_str:
+            start_date = parse_date(start_date_str)
+            end_date = parse_date(end_date_str)
+            if not start_date or not end_date:
+                return Response(
+                    {"error": "Invalid date format. Use YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            period_start = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+            period_end = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+        elif period == 'week':
+            period_start = now - timedelta(days=7)
+            period_end = now
+        elif period == 'month':
+            period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            period_end = now
+        elif period == 'quarter':
+            quarter = (now.month - 1) // 3
+            period_start = now.replace(month=quarter*3+1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            period_end = now
+        elif period == 'year':
+            period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            period_end = now
+        else:  # 'all'
+            period_start = None
+            period_end = now
+        
+        # Helper function to filter submissions for assigned campaigns
+        def filter_submissions(model, date_field='created_at'):
+            from campaigns.views import filter_queryset_for_campaign_manager
+            # Get content type for this model
+            ct = ContentType.objects.get_for_model(model)
+            
+            # If this content type has assigned campaigns, filter by them
+            if ct.id in assigned_campaign_ids:
+                campaign_ids = assigned_campaign_ids[ct.id]
+                qs = model.objects.filter(
+                    submitted_by=user,
+                    campaign_id__in=campaign_ids
+                )
+            else:
+                # No assigned campaigns of this type
+                qs = model.objects.none()
+            
+            # Apply date filtering
+            if period_start:
+                if date_field == 'created_at':
+                    qs = qs.filter(created_at__gte=period_start, created_at__lte=period_end)
+                elif date_field == 'submission_period':
+                    qs = qs.filter(submission_period__gte=period_start.date(), submission_period__lte=period_end.date())
+                elif date_field == 'date':
+                    qs = qs.filter(date__gte=period_start.date(), date__lte=period_end.date())
+            
+            return qs
+        
+        # Get all submissions for assigned campaigns (all time)
+        def get_all_time_submissions(model):
+            ct = ContentType.objects.get_for_model(model)
+            if ct.id in assigned_campaign_ids:
+                campaign_ids = assigned_campaign_ids[ct.id]
+                return model.objects.filter(
+                    submitted_by=user,
+                    campaign_id__in=campaign_ids
+                )
+            return model.objects.none()
+        
+        # Submission models mapping
+        submission_models = [
+            (StateOfTheFlockSubmission, "State of the Flock", 'submission_period'),
+            (SoulWinningSubmission, "Soul Winning", 'date'),
+            (ServantsArmedTrainedSubmission, "Servants Armed and Trained", 'date'),
+            (AntibrutishSubmission, "Antibrutish", 'date'),
+            (HearingSeeingSubmission, "Hearing and Seeing", 'date'),
+            (HonourYourProphetSubmission, "Honour Your Prophet", 'date'),
+            (BasontaProliferationSubmission, "Basonta Proliferation", 'submission_period'),
+            (IntimateCounselingSubmission, "Intimate Counseling", 'date'),
+            (TechnologySubmission, "Technology", 'date'),
+            (SheperdingControlSubmission, "Sheperding Control", 'submission_period'),
+            (MultiplicationSubmission, "Multiplication", 'date'),
+            (UnderstandingSubmission, "Understanding", 'date'),
+            (SheepSeekingSubmission, "Sheep Seeking", 'date'),
+            (TestimonySubmission, "Testimony", 'date'),
+            (TelepastoringSubmission, "Telepastoring", 'date'),
+            (GatheringBusSubmission, "Gathering Bus", 'date'),
+            (OrganisedCreativeArtsSubmission, "Organised Creative Arts", 'date'),
+            (TangerineSubmission, "Tangerine", 'date'),
+            (SwollenSundaySubmission, "Swollen Sunday", 'submission_period'),
+            (SundayManagementSubmission, "Sunday Management", 'date'),
+            (EquipmentSubmission, "Equipment", 'date'),
+        ]
+        
+        # Calculate totals
+        total_submissions_all_time = 0
+        total_submissions_this_period = 0
+        submissions_by_type = {}
+        submissions_over_time = []
+        
+        for SubmissionModel, campaign_type_name, date_field in submission_models:
+            # All time submissions
+            all_time_qs = get_all_time_submissions(SubmissionModel)
+            all_time_count = all_time_qs.count()
+            total_submissions_all_time += all_time_count
+            
+            # This period submissions
+            period_qs = filter_submissions(SubmissionModel, date_field)
+            period_count = period_qs.count()
+            total_submissions_this_period += period_count
+            
+            # Store by type
+            if all_time_count > 0 or period_count > 0:
+                submissions_by_type[campaign_type_name] = {
+                    "all_time": all_time_count,
+                    "this_period": period_count
+                }
+            
+            # Get submissions over time (last 12 months)
+            ct = ContentType.objects.get_for_model(SubmissionModel)
+            if ct.id in assigned_campaign_ids:
+                campaign_ids = assigned_campaign_ids[ct.id]
+                trend_qs = SubmissionModel.objects.filter(
+                    submitted_by=user,
+                    campaign_id__in=campaign_ids
+                ).exclude(**{date_field + '__isnull': True}).order_by('-' + date_field)[:12]
+                
+                for sub in trend_qs:
+                    date_value = getattr(sub, date_field)
+                    if date_value:
+                        if date_field == 'submission_period':
+                            period_key = date_value.strftime("%Y-%m")
+                            period_label = date_value.strftime("%b %Y")
+                        else:
+                            period_key = date_value.strftime("%Y-%m")
+                            period_label = date_value.strftime("%b %Y")
+                        
+                        # Add to submissions_over_time if not already present
+                        existing = next((x for x in submissions_over_time if x['period'] == period_key), None)
+                        if existing:
+                            existing['count'] += 1
+                        else:
+                            submissions_over_time.append({
+                                "period": period_key,
+                                "label": period_label,
+                                "count": 1
+                            })
+        
+        # Sort submissions over time
+        submissions_over_time.sort(key=lambda x: x['period'])
+        
+        # Get recent submissions (last 10)
+        recent_submissions = []
+        for SubmissionModel, campaign_type_name, date_field in submission_models:
+            ct = ContentType.objects.get_for_model(SubmissionModel)
+            if ct.id in assigned_campaign_ids:
+                campaign_ids = assigned_campaign_ids[ct.id]
+                recent = SubmissionModel.objects.filter(
+                    submitted_by=user,
+                    campaign_id__in=campaign_ids
+                ).select_related('campaign', 'service').order_by('-created_at')[:10]
+                
+                for sub in recent:
+                    recent_submissions.append({
+                        "id": sub.id,
+                        "campaign_name": sub.campaign.name if sub.campaign else "Unknown",
+                        "campaign_type": campaign_type_name,
+                        "service_name": sub.service.name if sub.service else "N/A",
+                        "submission_period": str(sub.submission_period) if hasattr(sub, 'submission_period') and sub.submission_period else None,
+                        "date": str(sub.date) if hasattr(sub, 'date') and sub.date else None,
+                        "created_at": sub.created_at.isoformat()
+                    })
+        
+        # Sort by created_at and take top 10
+        recent_submissions.sort(key=lambda x: x['created_at'], reverse=True)
+        recent_submissions = recent_submissions[:10]
+        
+        # Basic statistics
+        assigned_campaigns_count = len(assigned_campaign_ids)
+        total_campaigns_assigned = sum(len(ids) for ids in assigned_campaign_ids.values())
+        
+        # Build analytics response
+        analytics_data = {
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "full_name": user.full_name,
+                "role": user.role
+            },
+            "period": {
+                "type": period,
+                "start": period_start.isoformat() if period_start else None,
+                "end": period_end.isoformat()
+            },
+            "summary": {
+                "total_submissions_all_time": total_submissions_all_time,
+                "total_submissions_this_period": total_submissions_this_period,
+                "assigned_campaigns_count": assigned_campaigns_count,
+                "total_campaigns_assigned": total_campaigns_assigned
+            },
+            "submissions_by_type": submissions_by_type,
+            "submissions_over_time": submissions_over_time,
+            "recent_submissions": recent_submissions,
+            "chart_data": {
+                "labels": [item["label"] for item in submissions_over_time],
+                "data": [item["count"] for item in submissions_over_time],
+                "color": "#2196F3"
+            }
+        }
+        
+        return Response(analytics_data, status=status.HTTP_200_OK)
+    
+    def _standard_analytics(self, request, user):
+        """Standard comprehensive analytics for Pastor, Helper, and Admin roles"""
         
         # Determine date range
         period = request.query_params.get('period', 'month').lower()
