@@ -573,6 +573,9 @@ For more information or issues, contact your backend team.
 
 ### Common Fields for Most Submissions
 - campaign: integer (required; body or query param)
+- service: integer (required for Campaign Managers ONLY; auto-set for others)
+  - Campaign Managers: Provide the ID of the service this submission is for
+  - Pastors/Helpers: Do NOT provide this field (automatically set)
 - submission_period: string($date) (required)
   The first day of the month this submission is for.
 - date: string($date) (required)

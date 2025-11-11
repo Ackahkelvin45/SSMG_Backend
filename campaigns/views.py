@@ -188,12 +188,103 @@ def validate_campaign_manager_assignment(user, campaign_model, campaign_id):
     Helper function to validate that a Campaign Manager is assigned to a campaign.
     Raises ValidationError if not assigned.
     """
+    print("\n" + "="*80)
+    print("🔍 DEBUG: validate_campaign_manager_assignment")
+    print("="*80)
+    print(f"User ID: {user.id}")
+    print(f"User Name: {user.full_name}")
+    print(f"User Email: {user.email}")
+    print(f"User Role: {user.role}")
+    print(f"Is Campaign Manager: {user.is_campaign_manager}")
+    print(f"Campaign Model: {campaign_model}")
+    print(f"Campaign Model Name: {campaign_model.__name__}")
+    print(f"Campaign ID (raw): {repr(campaign_id)}")
+    print(f"Campaign ID Type: {type(campaign_id).__name__}")
+    
     if user.is_campaign_manager:
         from campaigns.models import CampaignManagerAssignment
         from django.contrib.contenttypes.models import ContentType
         ct = ContentType.objects.get_for_model(campaign_model)
-        if not CampaignManagerAssignment.objects.filter(user=user, content_type=ct, object_id=campaign_id).exists():
+        
+        print(f"Content Type: {ct}")
+        print(f"Content Type ID: {ct.id}")
+        print(f"Content Type Model: {ct.model}")
+        print(f"Content Type App Label: {ct.app_label}")
+        
+        # Convert campaign_id to integer (it comes as string from request)
+        try:
+            campaign_id_int = int(campaign_id)
+            print(f"Campaign ID (converted to int): {campaign_id_int}")
+        except (ValueError, TypeError) as e:
+            print(f"❌ ERROR converting campaign_id: {e}")
+            raise serializers.ValidationError({"campaign": "Invalid campaign id format."})
+        
+        # Check all assignments for this user
+        all_assignments = CampaignManagerAssignment.objects.filter(user=user)
+        print(f"\n📋 All assignments for user {user.id}:")
+        for assignment in all_assignments:
+            print(f"  - Content Type: {assignment.content_type.model} (ID: {assignment.content_type.id})")
+            print(f"    Object ID: {assignment.object_id} (type: {type(assignment.object_id).__name__})")
+            print(f"    Campaign: {assignment.campaign}")
+        
+        # Check the specific query
+        query_result = CampaignManagerAssignment.objects.filter(
+            user=user,
+            content_type=ct,
+            object_id=campaign_id_int
+        )
+        print(f"\n🔎 Query Details:")
+        print(f"  - Filter: user={user.id}, content_type={ct.id}, object_id={campaign_id_int}")
+        print(f"  - Query exists(): {query_result.exists()}")
+        print(f"  - Query count(): {query_result.count()}")
+        
+        if query_result.exists():
+            print(f"  ✅ ASSIGNMENT FOUND!")
+            for assignment in query_result:
+                print(f"     Assignment ID: {assignment.id}")
+                print(f"     Created: {assignment.created_at}")
+        else:
+            print(f"  ❌ NO ASSIGNMENT FOUND!")
+            print(f"\n🔍 Checking if it's a type mismatch...")
+            # Try with string
+            query_str = CampaignManagerAssignment.objects.filter(
+                user=user,
+                content_type=ct,
+                object_id=str(campaign_id_int)
+            )
+            print(f"  - Query with STRING object_id: {query_str.exists()}")
+            # Try with original value
+            query_orig = CampaignManagerAssignment.objects.filter(
+                user=user,
+                content_type=ct,
+                object_id=campaign_id
+            )
+            print(f"  - Query with ORIGINAL campaign_id: {query_orig.exists()}")
+        
+        print("="*80 + "\n")
+        
+        if not query_result.exists():
             raise serializers.ValidationError({"campaign": "You are not assigned to this campaign."})
+
+
+def get_service_for_submission(user, request_data):
+    """
+    Helper function to determine which service to use for a submission.
+    Campaign Managers must provide a service ID in request data.
+    Other users use their assigned service.
+    """
+    if user.is_campaign_manager:
+        service_id = request_data.get('service')
+        if not service_id:
+            raise serializers.ValidationError({"service": "Campaign Managers must specify a service."})
+        try:
+            from authentication.models import Service
+            service = Service.objects.get(id=service_id)
+        except Service.DoesNotExist:
+            raise serializers.ValidationError({"service": "Invalid service id."})
+        return service
+    else:
+        return getattr(user, 'service', None)
 
 
 class StateOfTheFlockSubmissionViewSet(viewsets.ModelViewSet):
@@ -242,7 +333,8 @@ class StateOfTheFlockSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, StateOfTheFlockCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -293,7 +385,8 @@ class SoulWinningSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, SoulWinningCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -344,7 +437,8 @@ class ServantsArmedTrainedSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, ServantsArmedTrainedCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -395,7 +489,8 @@ class AntibrutishSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, AntibrutishCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -445,7 +540,8 @@ class HearingSeeingSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, HearingSeeingCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -496,7 +592,8 @@ class HonourYourProphetSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, HonourYourProphetCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -547,7 +644,8 @@ class BasontaProliferationSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, BasontaProliferationCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -597,7 +695,8 @@ class IntimateCounselingSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, IntimateCounselingCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -648,7 +747,8 @@ class TechnologySubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, TechnologyCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -698,7 +798,8 @@ class SheperdingControlSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, SheperdingControlCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -749,7 +850,8 @@ class MultiplicationSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, MultiplicationCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -800,7 +902,8 @@ class UnderstandingSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, UnderstandingCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -851,7 +954,8 @@ class SheepSeekingSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, SheepSeekingCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -889,19 +993,51 @@ class TestimonySubmissionViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        print("\n" + "="*80)
+        print("🔍 DEBUG: TestimonySubmissionViewSet.perform_create")
+        print("="*80)
+        print(f"Request Method: {self.request.method}")
+        print(f"Request Content-Type: {self.request.content_type}")
+        print(f"Request Data (raw): {self.request.data}")
+        print(f"Request Query Params: {self.request.query_params}")
+        
         user = self.request.user
+        print(f"\n👤 User from request:")
+        print(f"  - ID: {user.id}")
+        print(f"  - Name: {user.full_name}")
+        print(f"  - Email: {user.email}")
+        print(f"  - Role: {user.role}")
+        
         campaign_id = self.request.data.get('campaign') or self.request.query_params.get('campaign')
+        print(f"\n📦 Campaign ID extraction:")
+        print(f"  - From request.data.get('campaign'): {repr(self.request.data.get('campaign'))}")
+        print(f"  - From query_params.get('campaign'): {repr(self.request.query_params.get('campaign'))}")
+        print(f"  - Final campaign_id: {repr(campaign_id)}")
+        print(f"  - campaign_id type: {type(campaign_id).__name__ if campaign_id else 'None'}")
+        
         if not campaign_id:
+            print("  ❌ ERROR: campaign_id is None or empty!")
             raise serializers.ValidationError({"campaign": "This field is required."})
+        
         try:
             campaign = TestimonyCampaign.objects.get(id=campaign_id)
+            print(f"  ✅ Campaign found: {campaign.name} (ID: {campaign.id})")
         except TestimonyCampaign.DoesNotExist:
+            print(f"  ❌ ERROR: TestimonyCampaign with id={campaign_id} does not exist!")
             raise serializers.ValidationError({"campaign": "Invalid campaign id."})
+        except ValueError as e:
+            print(f"  ❌ ERROR: Invalid campaign_id format: {e}")
+            raise serializers.ValidationError({"campaign": "Invalid campaign id format."})
         
         # Check if Campaign Manager is assigned to this campaign
+        print(f"\n🔐 Calling validate_campaign_manager_assignment...")
         validate_campaign_manager_assignment(user, TestimonyCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
+        print(f"\n✅ Validation passed! Saving submission...")
+        print(f"  - Service: {service.name if service else 'None'} (ID: {service.id if service else 'None'})")
+        print("="*80 + "\n")
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -952,7 +1088,8 @@ class TelepastoringSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, TelepastoringCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -1003,7 +1140,8 @@ class GatheringBusSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, GatheringBusCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -1053,7 +1191,8 @@ class OrganisedCreativeArtsSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, OrganisedCreativeArtsCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -1103,7 +1242,8 @@ class TangerineSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, TangerineCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -1154,7 +1294,8 @@ class SwollenSundaySubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, SwollenSundayCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -1205,7 +1346,8 @@ class SundayManagementSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, SundayManagementCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)
 
 
@@ -1256,5 +1398,6 @@ class EquipmentSubmissionViewSet(viewsets.ModelViewSet):
         # Check if Campaign Manager is assigned to this campaign
         validate_campaign_manager_assignment(user, EquipmentCampaign, campaign_id)
         
-        service = getattr(self.request.user, 'service', None)
+        # Get service (Campaign Managers select, others use assigned)
+        service = get_service_for_submission(user, self.request.data)
         serializer.save(submitted_by=self.request.user, service=service, campaign=campaign)

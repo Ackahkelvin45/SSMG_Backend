@@ -350,16 +350,21 @@ class EquipmentSubmissionFileSerializer(SubmissionFileSerializer):
 class StateOfTheFlockSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
+    
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
     
     class Meta:
         model = StateOfTheFlockSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'total_membership', 'lost', 'stable', 'unstable',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'created_at', 'updated_at'
         ]
 
@@ -367,6 +372,7 @@ class StateOfTheFlockSubmissionSerializer(serializers.ModelSerializer):
 class SoulWinningSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = SoulWinningSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -374,16 +380,20 @@ class SoulWinningSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = SoulWinningSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'no_of_crusades', 'no_of_massive_organised_outreaches',
             'no_of_dance_outreach', 'no_of_souls_won', 'no_of_missionaries_in_training',
             'no_of_missionaries_sent', 'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -400,6 +410,7 @@ class SoulWinningSubmissionSerializer(serializers.ModelSerializer):
 class ServantsArmedTrainedSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = ServantsArmedTrainedSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -407,10 +418,14 @@ class ServantsArmedTrainedSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = ServantsArmedTrainedSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'no_of_teachings_done_by_pastor',
             'average_attendance_during_meetings_by_pastor', 'no_of_leaders_who_have_makarios',
             'no_of_leaders_who_own_dakes_bible', 'no_of_leaders_who_own_thompson_chain',
@@ -418,7 +433,7 @@ class ServantsArmedTrainedSubmissionSerializer(serializers.ModelSerializer):
             'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -435,6 +450,7 @@ class ServantsArmedTrainedSubmissionSerializer(serializers.ModelSerializer):
 class AntibrutishSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = AntibrutishSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -442,16 +458,20 @@ class AntibrutishSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = AntibrutishSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'type_of_prayer', 'hours_prayed',
             'number_of_people_who_prayed', 'pictures', 'picture_files',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -468,18 +488,23 @@ class AntibrutishSubmissionSerializer(serializers.ModelSerializer):
 class HearingSeeingSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
+    
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
     
     class Meta:
         model = HearingSeeingSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'avg_number_of_leaders_that_join_flow',
             'no_of_people_subscribed_bishop_dag_youtube', 'no_of_people_subscribed_es_joys_podcast',
             'no_of_messages_listened_to', 'titles_of_messages_listened_to',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'created_at', 'updated_at'
         ]
 
@@ -487,6 +512,7 @@ class HearingSeeingSubmissionSerializer(serializers.ModelSerializer):
 class HonourYourProphetSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = HonourYourProphetSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -494,16 +520,20 @@ class HonourYourProphetSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = HonourYourProphetSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'no_of_people_who_honoured_with_offering',
             'activities_done_to_honour_prophet', 'pictures', 'picture_files',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -520,6 +550,7 @@ class HonourYourProphetSubmissionSerializer(serializers.ModelSerializer):
 class BasontaProliferationSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = BasontaProliferationSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -527,10 +558,14 @@ class BasontaProliferationSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = BasontaProliferationSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'no_of_bacentas_at_beginning_of_month', 'current_number_of_bacentas',
             'no_of_new_bacentas', 'no_of_leaders_who_are_leavers',
             'no_of_replacements_new_leaders_available', 'average_no_of_people_at_bacenta_meeting',
@@ -539,7 +574,7 @@ class BasontaProliferationSubmissionSerializer(serializers.ModelSerializer):
             'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -556,17 +591,22 @@ class BasontaProliferationSubmissionSerializer(serializers.ModelSerializer):
 class IntimateCounselingSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
+    
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
     
     class Meta:
         model = IntimateCounselingSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'total_number_of_members', 'total_number_of_members_counseled',
             'no_of_members_counseled_via_calls', 'no_of_members_counseled_in_person',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'created_at', 'updated_at'
         ]
 
@@ -574,6 +614,7 @@ class IntimateCounselingSubmissionSerializer(serializers.ModelSerializer):
 class TechnologySubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = TechnologySubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -581,15 +622,19 @@ class TechnologySubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = TechnologySubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'list_of_equipments_in_church', 'pictures', 'picture_files',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -606,17 +651,22 @@ class TechnologySubmissionSerializer(serializers.ModelSerializer):
 class SheperdingControlSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
+    
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
     
     class Meta:
         model = SheperdingControlSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'current_no_of_leaders', 'no_of_cos', 'no_of_bos',
             'no_of_bls', 'no_of_fls', 'no_of_potential_leaders', 'no_of_leaders_who_have_been_sacked',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'created_at', 'updated_at'
         ]
 
@@ -624,6 +674,7 @@ class SheperdingControlSubmissionSerializer(serializers.ModelSerializer):
 class MultiplicationSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = MultiplicationSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -631,17 +682,21 @@ class MultiplicationSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = MultiplicationSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'no_of_outreaches', 'type_of_outreaches',
             'no_of_members_who_came_from_outreaches_to_church', 'no_of_invites_done',
             'avg_number_of_people_invited_per_week', 'pictures', 'picture_files',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -658,6 +713,7 @@ class MultiplicationSubmissionSerializer(serializers.ModelSerializer):
 class UnderstandingSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = UnderstandingSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -665,16 +721,20 @@ class UnderstandingSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = UnderstandingSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'lay_school_material_being_taught',
             'no_of_lay_school_teachers', 'average_attendance_at_lay_school_meeting',
             'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -691,6 +751,7 @@ class UnderstandingSubmissionSerializer(serializers.ModelSerializer):
 class SheepSeekingSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = SheepSeekingSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -698,16 +759,20 @@ class SheepSeekingSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = SheepSeekingSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'no_of_people_visited', 'types_of_visits_done',
             'no_of_idl_visits_done', 'no_of_first_time_retained', 'no_of_convert_visits_done',
             'no_of_converts_retained', 'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -724,16 +789,21 @@ class SheepSeekingSubmissionSerializer(serializers.ModelSerializer):
 class TestimonySubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
+    
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
     
     class Meta:
         model = TestimonySubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'number_of_testimonies_shared', 'type_of_testimony_shared',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'created_at', 'updated_at'
         ]
 
@@ -741,6 +811,7 @@ class TestimonySubmissionSerializer(serializers.ModelSerializer):
 class TelepastoringSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = TelepastoringSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -748,16 +819,20 @@ class TelepastoringSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = TelepastoringSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'no_of_telepastors', 'total_no_of_calls_made',
             'categories_of_people_called', 'pictures', 'picture_files',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -774,6 +849,7 @@ class TelepastoringSubmissionSerializer(serializers.ModelSerializer):
 class GatheringBusSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = GatheringBusSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -781,17 +857,21 @@ class GatheringBusSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = GatheringBusSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'avg_number_of_members_bused',
             'avg_number_of_members_who_walk_in', 'avg_number_of_buses_for_service',
             'avg_attendance_for_the_service', 'avg_number_of_first_timers',
             'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -808,16 +888,21 @@ class GatheringBusSubmissionSerializer(serializers.ModelSerializer):
 class OrganisedCreativeArtsSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
+    
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
     
     class Meta:
         model = OrganisedCreativeArtsSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'was_there_any_organisation_of_creative_arts',
             'which_basonta_was_responsible', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'created_at', 'updated_at'
         ]
 
@@ -825,16 +910,21 @@ class OrganisedCreativeArtsSubmissionSerializer(serializers.ModelSerializer):
 class TangerineSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
+    
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
     
     class Meta:
         model = TangerineSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'no_of_tangerines', 'types_of_tangerines',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'created_at', 'updated_at'
         ]
 
@@ -842,6 +932,7 @@ class TangerineSubmissionSerializer(serializers.ModelSerializer):
 class SwollenSundaySubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = SwollenSundaySubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -849,15 +940,19 @@ class SwollenSundaySubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = SwollenSundaySubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'attendance_for_swollen_sunday', 'no_of_converts_for_swollen_sunday',
             'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -874,6 +969,7 @@ class SwollenSundaySubmissionSerializer(serializers.ModelSerializer):
 class SundayManagementSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = SundayManagementSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -881,15 +977,19 @@ class SundayManagementSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = SundayManagementSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'month', 'no_of_meetings_per_month',
             'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     
@@ -906,6 +1006,7 @@ class SundayManagementSubmissionSerializer(serializers.ModelSerializer):
 class EquipmentSubmissionSerializer(serializers.ModelSerializer):
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    submitted_by_role = serializers.SerializerMethodField()
     pictures = EquipmentSubmissionFileSerializer(many=True, read_only=True)
     picture_files = serializers.ListField(
         child=serializers.ImageField(),
@@ -913,17 +1014,21 @@ class EquipmentSubmissionSerializer(serializers.ModelSerializer):
         required=False
     )
     
+    def get_submitted_by_role(self, obj):
+        """Return the role of the user who submitted this"""
+        return obj.submitted_by.role if obj.submitted_by else None
+    
     class Meta:
         model = EquipmentSubmission
         fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'submission_period', 'date', 'equipment_name', 'equipment_type', 'quantity',
             'condition', 'location', 'purchase_date', 'purchase_cost', 'current_value',
             'supplier_name', 'warranty_expiry_date', 'maintenance_notes', 'is_functional',
             'pictures', 'picture_files', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'service', 'service_name',
+            'id', 'campaign', 'submitted_by', 'submitted_by_name', 'submitted_by_role', 'service', 'service_name',
             'pictures', 'created_at', 'updated_at'
         ]
     

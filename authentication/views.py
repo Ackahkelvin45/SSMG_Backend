@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status, parsers
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.views import TokenObtainPairView
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db.models import Sum, Avg, Count, Q
@@ -14,7 +15,9 @@ from .serializers import (
     ServiceSerializer,
     ServiceCreateSerializer,
     ChangePasswordSerializer,
-    CampaignManagerCreateSerializer
+    CampaignManagerCreateSerializer,
+    CampaignManagerUpdateSerializer,
+    CustomTokenObtainPairSerializer
 )
 from helpers.pagination import DefaultPagination
 from rest_framework.decorators import action
@@ -36,6 +39,19 @@ from campaigns.serializers import (
     DashboardSubmissionSerializer,
     DashboardCampaignSerializer
 )
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    Custom login view that returns JWT tokens along with user information.
+    
+    Response includes:
+    - access: JWT access token
+    - refresh: JWT refresh token
+    - user: Complete user information including role, service, and profile
+    """
+    serializer_class = CustomTokenObtainPairSerializer
+
 
 class ServiceViewSet(viewsets.ModelViewSet):
     queryset = Service.objects.all().order_by('-created_at')
@@ -152,6 +168,90 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(
             CampaignManagerCreateSerializer(user).data,
             status=status.HTTP_201_CREATED
+        )
+    
+    @action(detail=True, methods=['put', 'patch'], url_path='update-campaign-manager')
+    def update_campaign_manager(self, request, pk=None):
+        """
+        Update a Campaign Manager user and their campaign assignments.
+        
+        Allowed updates:
+        - first_name, last_name, email, phone_number
+        - profile_picture
+        - campaign_assignments (completely replaces existing assignments)
+        
+        Not allowed:
+        - username (read-only)
+        - role (must remain CAMPAIGN_MANAGER)
+        - service (Campaign Managers have no service)
+        
+        Example request body:
+        {
+            "first_name": "Jane",
+            "last_name": "Doe Updated",
+            "email": "jane.updated@example.com",
+            "phone_number": "+9876543210",
+            "campaign_assignments": [
+                {"campaign_name": "State of the Flock 2025"},
+                {"campaign_name": "Soul Winning Initiative"}
+            ]
+        }
+        """
+        user = self.get_object()
+        
+        # Verify this is a Campaign Manager
+        if not user.is_campaign_manager:
+            return Response(
+                {"error": "This endpoint is only for Campaign Manager users."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = CampaignManagerUpdateSerializer(
+            user, 
+            data=request.data, 
+            partial=(request.method == 'PATCH')
+        )
+        serializer.is_valid(raise_exception=True)
+        updated_user = serializer.save()
+        
+        return Response(
+            CampaignManagerUpdateSerializer(updated_user).data,
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['delete'], url_path='delete-campaign-manager')
+    def delete_campaign_manager(self, request, pk=None):
+        """
+        Delete a Campaign Manager user.
+        
+        This will:
+        1. Delete all campaign assignments for this user
+        2. Delete all submissions made by this user
+        3. Delete the user account
+        
+        Warning: This action cannot be undone!
+        
+        Returns 204 No Content on success.
+        """
+        user = self.get_object()
+        
+        # Verify this is a Campaign Manager
+        if not user.is_campaign_manager:
+            return Response(
+                {"error": "This endpoint is only for Campaign Manager users."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get username for logging
+        username = user.username
+        
+        # Django will cascade delete campaign assignments and submissions
+        # due to ForeignKey relationships
+        user.delete()
+        
+        return Response(
+            {"message": f"Campaign Manager '{username}' has been successfully deleted."},
+            status=status.HTTP_204_NO_CONTENT
         )
 
     @action(detail=False, methods=['get'])
