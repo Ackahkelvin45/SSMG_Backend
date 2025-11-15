@@ -8,7 +8,7 @@ import string,random
 
 class Service(models.Model):
     name=models.CharField(max_length=100,unique=True,blank=True,null=True)
-    location=models.CharField(max_length=100,unique=True,blank=True,null=True)
+    location=models.CharField(max_length=100,blank=True,null=True)
     total_members=models.PositiveIntegerField(blank=True,null=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
