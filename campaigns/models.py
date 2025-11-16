@@ -4,6 +4,8 @@ from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 from authentication.models import Service
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
 
 # Base abstract model for common campaign fields
 class BaseCampaign(models.Model):
@@ -74,6 +76,53 @@ class StateOfTheFlockSubmission(BaseSubmission):
 
     class Meta:
         db_table = 'submission_sof'
+
+
+def _recalculate_service_total_membership(service: Service):
+    """
+    Helper to recalculate and update Service.total_members based on
+    the latest StateOfTheFlockSubmission for that service.
+    """
+    if not service:
+        return
+
+    latest_submission = (
+        StateOfTheFlockSubmission.objects
+        .filter(service=service)
+        .order_by('-submission_period', '-created_at')
+        .first()
+    )
+
+    if latest_submission and latest_submission.total_membership is not None:
+        service.total_members = latest_submission.total_membership
+    else:
+        # If there is no submission or total_membership is null, clear the value
+        service.total_members = None
+
+    service.save(update_fields=['total_members'])
+
+
+@receiver(post_save, sender=StateOfTheFlockSubmission)
+def update_service_total_membership_on_save(sender, instance, **kwargs):
+    """
+    When a StateOfTheFlockSubmission is created or updated, update the
+    related Service.total_members.
+
+    Works for all roles (Pastors, Helpers, Campaign Managers), since the
+    submission already has the correct service set.
+    """
+    if instance.service_id:
+        _recalculate_service_total_membership(instance.service)
+
+
+@receiver(post_delete, sender=StateOfTheFlockSubmission)
+def update_service_total_membership_on_delete(sender, instance, **kwargs):
+    """
+    When a StateOfTheFlockSubmission is deleted, recalculate the
+    Service.total_members based on remaining submissions.
+    """
+    if instance.service_id:
+        _recalculate_service_total_membership(instance.service)
 
 
 class SoulWinningCampaign(BaseCampaign):
