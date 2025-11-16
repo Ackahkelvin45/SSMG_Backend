@@ -239,7 +239,7 @@ class CampaignManagerCreateSerializer(serializers.ModelSerializer):
         if not value or not isinstance(value, list):
             raise serializers.ValidationError("At least one campaign assignment is required.")
         
-        # Import all campaign models
+        # Import all campaign models (including EquipmentCampaign)
         from campaigns.models import (
             StateOfTheFlockCampaign, SoulWinningCampaign, ServantsArmedTrainedCampaign,
             AntibrutishCampaign, HearingSeeingCampaign, HonourYourProphetCampaign,
@@ -247,7 +247,7 @@ class CampaignManagerCreateSerializer(serializers.ModelSerializer):
             SheperdingControlCampaign, MultiplicationCampaign, UnderstandingCampaign,
             SheepSeekingCampaign, TestimonyCampaign, TelepastoringCampaign,
             GatheringBusCampaign, OrganisedCreativeArtsCampaign, TangerineCampaign,
-            SwollenSundayCampaign, SundayManagementCampaign
+            SwollenSundayCampaign, SundayManagementCampaign, EquipmentCampaign
         )
         
         # All campaign models to check
@@ -258,7 +258,7 @@ class CampaignManagerCreateSerializer(serializers.ModelSerializer):
             SheperdingControlCampaign, MultiplicationCampaign, UnderstandingCampaign,
             SheepSeekingCampaign, TestimonyCampaign, TelepastoringCampaign,
             GatheringBusCampaign, OrganisedCreativeArtsCampaign, TangerineCampaign,
-            SwollenSundayCampaign, SundayManagementCampaign,
+            SwollenSundayCampaign, SundayManagementCampaign, EquipmentCampaign,
         ]
         
         # Validate each campaign name
@@ -319,7 +319,7 @@ class CampaignManagerCreateSerializer(serializers.ModelSerializer):
             profile_picture=profile_picture
         )
         
-        # Import all campaign models
+        # Import all campaign models (including EquipmentCampaign)
         from campaigns.models import (
             StateOfTheFlockCampaign, SoulWinningCampaign, ServantsArmedTrainedCampaign,
             AntibrutishCampaign, HearingSeeingCampaign, HonourYourProphetCampaign,
@@ -327,7 +327,7 @@ class CampaignManagerCreateSerializer(serializers.ModelSerializer):
             SheperdingControlCampaign, MultiplicationCampaign, UnderstandingCampaign,
             SheepSeekingCampaign, TestimonyCampaign, TelepastoringCampaign,
             GatheringBusCampaign, OrganisedCreativeArtsCampaign, TangerineCampaign,
-            SwollenSundayCampaign, SundayManagementCampaign
+            SwollenSundayCampaign, SundayManagementCampaign, EquipmentCampaign
         )
         
         # All campaign models to search
@@ -338,7 +338,7 @@ class CampaignManagerCreateSerializer(serializers.ModelSerializer):
             SheperdingControlCampaign, MultiplicationCampaign, UnderstandingCampaign,
             SheepSeekingCampaign, TestimonyCampaign, TelepastoringCampaign,
             GatheringBusCampaign, OrganisedCreativeArtsCampaign, TangerineCampaign,
-            SwollenSundayCampaign, SundayManagementCampaign,
+            SwollenSundayCampaign, SundayManagementCampaign, EquipmentCampaign,
         ]
         
         # Create campaign assignments - automatically detect campaign type from name
